@@ -7,9 +7,9 @@ export default async (req) => {
       status: s,
       headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
     });
-  const meta = (await store.get("_meta", { type: "json" })) || {};
 
   if (req.method === "GET") {
+    const meta = (await store.get("_meta", { type: "json" })) || {};
     const since = Number(new URL(req.url).searchParams.get("since") || 0);
     const gone = [], items = [];
     for (const [id, t] of Object.entries(meta)) {
@@ -22,12 +22,17 @@ export default async (req) => {
     return json({ gone, items, now: Date.now() });
   }
 
+  if (req.method !== "POST") return json({ ok: false, error: "Method not allowed." }, 405);
+
   let b;
   try { b = await req.json(); } catch { return json({ ok: false }, 400); }
   const pw = Netlify.env.get("ADMIN_PASSWORD");
-  if (!pw || b.pw !== pw) return json({ ok: false }, 401);
+  if (!pw) return json({ ok: false, error: "Admin login is not configured. The site owner needs to set ADMIN_PASSWORD in Netlify environment variables for Functions and redeploy." }, 503);
+  if (!b || typeof b.pw !== "string" || b.pw !== pw) return json({ ok: false, error: "Wrong admin password. Use Log in with the name admin." }, 401);
 
   if (b.action === "check") return json({ ok: true });
+
+  const meta = (await store.get("_meta", { type: "json" })) || {};
 
   if (b.action === "save" && b.item && /^[\w-]{3,40}$/.test(b.item.id || "")) {
     const t = Date.now();

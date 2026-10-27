@@ -63,7 +63,7 @@ h4{margin:.8em 0 .2em}
 <body data-theme="space"><div id="bg"></div><div id="app"></div>
 <script>
 const $=s=>document.querySelector(s),esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const ADMIN_PW='',THEMES=['space','biology','math','physics','literature','history','sports','chemistry','geography','art','music','technology','economics'];
+const THEMES=['space','biology','math','physics','literature','history','sports','chemistry','geography','art','music','technology','economics'];
 const GR=[7,8,9,10,11,12],TM=[1,2,3];
 function load(){try{return JSON.parse(localStorage.getItem('sl_db'))||{users:{},items:[]}}catch(e){return{users:{},items:[]}}}
 let db=load(),me=null,S={g:11,t:2,ty:'all',view:'lib'},draft=null,ai={g:11,t:2,id:'',out:''};
@@ -74,14 +74,15 @@ const uid=()=>Math.random().toString(36).slice(2,10);
 
 /* ---------- AUTH ---------- */
 function authView(msg=''){setTheme('space');$('#app').innerHTML=`<div class="auth card"><h1>🚀 Learn<span style="color:var(--ac2)">Link.Ai</span></h1><p class="muted">Space science &amp; technology learning for grades 7–12.</p>
-<label>Student name</label><input id="un" autocomplete="username"><label>Password</label><div style="position:relative"><input id="pw" type="password" autocomplete="current-password" style="padding-right:76px"><button type="button" class="ghost sm" style="position:absolute;right:6px;top:7px" onclick="togglePw(this)">👁 Show</button></div>
-<div class="bad">${esc(msg)}</div><div class="row"><button onclick="login()">Log in</button><button class="ghost" onclick="signup()">Sign up</button></div></div>`}
+<label>Student name or admin</label><input id="un" autocomplete="username"><label>Password</label><div style="position:relative"><input id="pw" type="password" autocomplete="current-password" style="padding-right:76px"><button type="button" class="ghost sm" style="position:absolute;right:6px;top:7px" onclick="togglePw(this)">👁 Show</button></div>
+<p class="muted">Administrators: enter admin and use Log in. Sign up is for new students.</p><div class="bad" role="alert">${esc(msg)}</div><div class="row"><button onclick="login()">Log in</button><button class="ghost" onclick="signup()">Sign up</button></div></div>`}
 async function login(){const n=$('#un').value.trim().toLowerCase(),p=$('#pw').value;
- if(n==='admin'){const ok=await api({action:'check',pw:p});if(ok&&ok.ok){adminPw=p;try{sessionStorage.setItem('sl_ap',p)}catch(e){}db.users.admin=db.users.admin||{name:'admin',theme:'space',fav:[],off:[]};save();return enter('admin')}return authView(ok?'Wrong admin password.':'Admin login needs an internet connection.')}
+ if(n==='admin'){const ok=await api({action:'check',pw:p});if(ok&&ok.ok){adminPw=p;try{sessionStorage.setItem('sl_ap',p)}catch(e){}db.users.admin=db.users.admin||{name:'admin',theme:'space',fav:[],off:[]};save();enter('admin');S.view='adm';return render()}return authView(ok?.error||'Admin login is unavailable. Check your internet connection and try again.')}
  const u=db.users[n];if(u&&u.h===await sha(p))enter(n);else authView('Wrong name or password.')}
 async function signup(){const n=$('#un').value.trim().toLowerCase(),p=$('#pw').value;
  if(n.length<2||p.length<4)return authView('Name 2+ chars and password 4+ chars.');
- if(n==='admin'||db.users[n])return authView('That name is taken.');
+ if(n==='admin')return authView('The admin account already exists. Enter admin and your admin password, then choose Log in.');
+ if(db.users[n])return authView('That name is taken. Choose Log in for an existing account.');
  db.users[n]={name:n,h:await sha(p),age:'',school:'',bio:'',theme:'space',fav:[],off:[]};save();enter(n)}
 function enter(n){me=n;const u=db.users[n];u.fav=fav4(u.fav);u.sd=u.sd||[];['seed-piecewise','seed-acadcomm','seed-chemrxn'].forEach(id=>{if(!u.sd.includes(id)&&db.items.some(i=>i.id===id)){if(!u.off.includes(id))u.off.push(id);u.sd.push(id)}});const td=new Date().toDateString(),yd=new Date(Date.now()-864e5).toDateString();if(u.last!==td){u.streak=u.last===yd?(u.streak||0)+1:1;u.last=td}save();try{sessionStorage.setItem('sl_me',n)}catch(e){}S.view='lib';render()}
 function logout(){me=null;adminPw='';try{sessionStorage.removeItem('sl_ap')}catch(e){}try{sessionStorage.removeItem('sl_me')}catch(e){}authView()}
@@ -140,7 +141,7 @@ function saveProf(th){const u=U();u.age=$('#pa').value;u.school=$('#ps').value;u
 
 /* ---------- ADMIN ---------- */
 function newDraft(){draft={id:uid(),type:'book',grade:7,term:1,title:'',blocks:[{t:'text',v:''}],src:'',questions:[],qtext:''}}
-function admView(){if(!draft)newDraft();const d=draft;
+function admView(){if(!isAdmin()||!adminPw)return authView('Please log in as admin to manage books.');if(!draft)newDraft();const d=draft;
  $('#m').innerHTML=`<h2>Admin</h2><div class="card"><h3>${db.items.some(i=>i.id===d.id)?'Edit':'New'} upload</h3>
  <div class="row"><div><label>Type</label><select onchange="sync();draft.type=this.value;admView()">${['book','video','quiz'].map(x=>`<option value="${x}" ${d.type==x?'selected':''}>${cap(x)}</option>`).join('')}</select></div>
  <div><label>Grade</label><select id="dg">${GR.map(g=>`<option ${d.grade==g?'selected':''}>${g}</option>`).join('')}</select></div>
@@ -157,13 +158,13 @@ function sync(){const d=draft;if(!d)return;const g=$('#dg');if(g){d.grade=+g.val
 function rd(f,cb){const r=new FileReader();r.onload=()=>cb(r.result);r.readAsDataURL(f)}
 function addImg(el){sync();rd(el.files[0],v=>{draft.blocks.push({t:'img',v},{t:'text',v:''});admView()})}
 function addVid(el){sync();rd(el.files[0],v=>{draft.src=v;admView()})}
-function saveItem(){sync();const d=draft;if(!d.title.trim())return alert('Please add a title.');const it={id:d.id,type:d.type,grade:d.grade,term:d.term,title:d.title.trim(),cover:d.cover||''};
+async function saveItem(){if(!isAdmin()||!adminPw)return alert('Please log in as admin first.');sync();const d=draft;if(!d.title.trim())return alert('Please add a title.');const it={id:d.id,type:d.type,grade:d.grade,term:d.term,title:d.title.trim(),cover:d.cover||''};
  if(d.type==='book')it.blocks=d.blocks.filter(b=>b.v.trim());
  if(d.type==='video'){if(!d.src)return alert('Add a video file or link.');it.src=d.src}
  if(d.type==='quiz'){it.questions=d.qtext.split('\n').map(l=>l.split('|').map(s=>s.trim())).filter(p=>p[0]&&(p.length===2||p.length>=4)).map(p=>{if(p.length===2){if(/^(true|false)$/i.test(p[1]))return{q:p[0],o:['True','False'],a:/^true$/i.test(p[1])?0:1,kind:'True or false'};const isN=/^-?\d+(\.\d+)?$/.test(p[1]);return{q:p[0],t:'type',num:isN?1:0,ans:isN?[parseFloat(p[1])]:p[1].split(';').map(x=>x.trim()).filter(Boolean),kind:isN?'Solving':'Identification',loose:1}}const o=p.slice(1,-1),a=parseInt(p[p.length-1])-1;return{q:p[0],o,a:isNaN(a)?0:Math.max(0,Math.min(a,o.length-1)),kind:'Multiple choice'}});if(!it.questions.length)return alert('Add at least one valid question.');it.qtext=d.qtext}
- const k=db.items.findIndex(i=>i.id===d.id);k<0?db.items.push(it):db.items[k]=it;save();pushItem(it);newDraft();admView()}
+ if(!await pushItem(it))return;const k=db.items.findIndex(i=>i.id===d.id);k<0?db.items.push(it):db.items[k]=it;save();newDraft();admView();alert('Saved and published to the library.');}
 function editItem(id){const i=db.items.find(x=>x.id===id);draft={blocks:[{t:'text',v:''}],src:'',questions:[],qtext:i.qtext||i.questions?.map(q=>[q.q,...q.o,q.a+1].join(' | ')).join('\n')||'',...JSON.parse(JSON.stringify(i))};scrollTo(0,0);admView()}
-function delItem(id){if(!confirm('Delete this upload?'))return;if(adminPw)api({action:'delete',pw:adminPw,id});db.items=db.items.filter(i=>i.id!==id);Object.values(db.users).forEach(u=>{u.off=u.off.filter(x=>x!==id);u.fav=fav4(u.fav).map(x=>x===id?null:x)});save();admView()}
+async function delItem(id){if(!isAdmin()||!adminPw)return alert('Please log in as admin first.');if(!confirm('Delete this upload?'))return;const r=await api({action:'delete',pw:adminPw,id});if(!r?.ok)return alert(r?.error||'Delete failed. Check your connection and try again.');db.items=db.items.filter(i=>i.id!==id);Object.values(db.users).forEach(u=>{u.off=u.off.filter(x=>x!==id);u.fav=fav4(u.fav).map(x=>x===id?null:x)});save();admView()}
 
 /* ---------- AI HELPER (works offline from downloaded books) ---------- */
 const STOP=new Set('the a an and or of to in on is are was were be been it its this that for with as by at from which their there these those can has have had not but if then than so such into also more most other some any each about over under between when what who how why does do'.split(' '));
@@ -385,7 +386,7 @@ function seedCH(){if(db.seedCH)return;db.seedCH=1;const C=`<svg xmlns="http://ww
 let adminPw=(()=>{try{return sessionStorage.getItem('sl_ap')||''}catch(e){return ''}})();
 async function api(body){try{const r=await fetch('/api/library',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});return await r.json()}catch(e){return null}}
 async function syncLib(){try{const r=await fetch('/api/library?since='+(db.since||0),{cache:'no-store'});if(!r.ok)return;const d=await r.json();let ch=0;(d.gone||[]).forEach(id=>{if(db.items.some(i=>i.id===id)){db.items=db.items.filter(i=>i.id!==id);ch++}});(d.items||[]).forEach(it=>{const k=db.items.findIndex(i=>i.id===it.id);if(k<0)db.items.push(it);else db.items[k]=it;ch++});db.since=Math.max(0,d.now-5000);save();if(ch&&me&&S.view==='lib')render()}catch(e){}}
-async function pushItem(it){if(!adminPw)return;const r=await api({action:'save',pw:adminPw,item:it});if(!r||!r.ok)alert('Saved on this device only. The upload to the server failed (no internet, or the item is over about 4 MB). For big videos, use a link instead.');else{it.updated=r.updated;save()}}
+async function pushItem(it){if(!isAdmin()||!adminPw)return false;const r=await api({action:'save',pw:adminPw,item:it});if(!r?.ok){alert(r?.error||'Publishing failed. Your draft is still open. Check your connection and keep uploads below 4 MB.');return false}it.updated=r.updated;return true}
 async function pubAll(){if(!adminPw)return;let n=0;for(const it of db.items){const r=await api({action:'save',pw:adminPw,item:it});if(r&&r.ok)n++}alert(n+' of '+db.items.length+' items published to everyone.')}
 (function(){seedDb();if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});syncLib();setInterval(syncLib,60000);addEventListener('online',syncLib);let n=null;try{n=sessionStorage.getItem('sl_me')}catch(e){}if(n&&db.users[n]){me=n;try{S.view=sessionStorage.getItem('sl_v')||'lib';if(S.view==='adm'&&n!=='admin')S.view='lib'}catch(e){}render()}else authView()})();
 </script></body></html>
